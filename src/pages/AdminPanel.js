@@ -4,8 +4,8 @@ import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firesto
 
 function AdminPanel({ onLogout }) {
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refresh, setRefresh] = useState(false); // To trigger re-renders
+  const [loading, setLoading] = useState(true); // <--- Variable causing error
+  const [refresh, setRefresh] = useState(false);
 
   // 1. FETCH ALL PROJECTS
   useEffect(() => {
@@ -17,7 +17,7 @@ function AdminPanel({ onLogout }) {
           ...doc.data()
         }));
         setProjects(projectsList);
-        setLoading(false);
+        setLoading(false); // <--- We use it here
       } catch (error) {
         console.error("Error loading projects:", error);
         setLoading(false);
@@ -27,12 +27,12 @@ function AdminPanel({ onLogout }) {
     fetchProjects();
   }, [refresh]);
 
-  // 2. UPDATE STATUS (Approve/Reject)
+  // 2. UPDATE STATUS
   const handleStatus = async (projectId, newStatus) => {
     try {
       const projectRef = doc(db, "projects", projectId);
       await updateDoc(projectRef, { status: newStatus });
-      setRefresh(!refresh); // Reload list
+      setRefresh(!refresh);
     } catch (error) {
       alert("Error updating status");
     }
@@ -43,7 +43,7 @@ function AdminPanel({ onLogout }) {
     if (window.confirm("⚠️ Are you sure you want to permanently delete this project?")) {
       try {
         await deleteDoc(doc(db, "projects", projectId));
-        setRefresh(!refresh); // Reload list
+        setRefresh(!refresh);
         alert("Project deleted.");
       } catch (error) {
         alert("Error deleting project");
@@ -56,6 +56,15 @@ function AdminPanel({ onLogout }) {
   const pendingProjects = projects.filter(p => p.status === 'Pending').length;
   const approvedProjects = projects.filter(p => p.status === 'Approved').length;
 
+  // --- FIX: USE THE LOADING STATE ---
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500 font-bold text-xl">
+        Loading Dashboard...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 flex">
       
@@ -66,7 +75,6 @@ function AdminPanel({ onLogout }) {
         <div className="flex-1 space-y-4">
           <div className="p-3 bg-white/10 rounded-xl cursor-pointer font-bold">📂 Dashboard</div>
           <div className="p-3 hover:bg-white/5 rounded-xl cursor-pointer text-white/60" onClick={() => alert("Feature coming soon!")}>👥 Users</div>
-          <div className="p-3 hover:bg-white/5 rounded-xl cursor-pointer text-white/60" onClick={() => alert("Feature coming soon!")}>⚙️ Settings</div>
         </div>
 
         <button 
@@ -138,8 +146,6 @@ function AdminPanel({ onLogout }) {
                       </span>
                     </td>
                     <td className="p-4 text-right flex justify-end gap-2">
-                      
-                      {/* APPROVE BUTTON (Only if not already approved) */}
                       {project.status !== 'Approved' && (
                         <button 
                           onClick={() => handleStatus(project.id, 'Approved')}
@@ -149,19 +155,15 @@ function AdminPanel({ onLogout }) {
                           ✓
                         </button>
                       )}
-
-                      {/* REJECT BUTTON */}
                       {project.status !== 'Rejected' && (
                         <button 
                           onClick={() => handleStatus(project.id, 'Rejected')}
                           className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-500 hover:text-white transition"
-                          title="Reject / Hide"
+                          title="Reject"
                         >
                           ✕
                         </button>
                       )}
-
-                      {/* DELETE BUTTON */}
                       <button 
                         onClick={() => handleDelete(project.id)}
                         className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-500 hover:text-white transition"
@@ -169,21 +171,16 @@ function AdminPanel({ onLogout }) {
                       >
                         🗑️
                       </button>
-
                     </td>
                   </tr>
                 ))}
-                
                 {projects.length === 0 && (
-                  <tr>
-                    <td colSpan="5" className="p-8 text-center text-gray-400">No projects found.</td>
-                  </tr>
+                  <tr><td colSpan="5" className="p-8 text-center text-gray-400">No projects found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
-
       </div>
     </div>
   );

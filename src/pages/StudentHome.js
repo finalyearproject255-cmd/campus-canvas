@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import UserProfile from '../components/UserProfile'; 
-import Footer from '../components/Footer'; // Import Footer
+import Footer from '../components/Footer'; 
 
 function StudentHome({ onNavigate, onViewProject, onLogout }) { 
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,17 +41,22 @@ function StudentHome({ onNavigate, onViewProject, onLogout }) {
     return matchesSearch && matchesCategory;
   });
 
-  // CAROUSEL LOGIC
+  // --- FIX: CAROUSEL LOGIC ---
   const heroProjects = approvedProjects.slice(0, 5); // Top 5
+  
+  // Manual Controls
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % heroProjects.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + heroProjects.length) % heroProjects.length);
 
+  // Auto-Play Effect (Fixed Dependency Issue)
   useEffect(() => {
     if (heroProjects.length > 0) {
-      const interval = setInterval(nextSlide, 5000);
+      const interval = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % heroProjects.length);
+      }, 5000);
       return () => clearInterval(interval);
     }
-  }, [heroProjects.length]);
+  }, [heroProjects.length]); 
 
   const heroProject = heroProjects.length > 0 ? heroProjects[currentSlide] : {
     title: "Waiting for Projects...", description: "Submissions are being reviewed.", color: "from-gray-700 to-gray-900", icon: "⏳"
