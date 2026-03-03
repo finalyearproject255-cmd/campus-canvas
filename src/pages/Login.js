@@ -1,116 +1,167 @@
 import React, { useState } from 'react';
-import { db } from '../firebase';
+import { db } from '../firebase'; 
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { User, Lock, ShieldCheck, ArrowRight, AlertCircle, LayoutGrid, Sparkles } from 'lucide-react';
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setIsLoading(true);
 
     try {
+      const formattedUsername = username.trim().toLowerCase();
+
+      // 1. Querying your existing Firebase "users" collection
       const usersRef = collection(db, "users");
-      const q = query(usersRef, where("username", "==", username), where("password", "==", password));
-      
+      const q = query(usersRef, where("username", "==", formattedUsername), where("password", "==", password));
       const querySnapshot = await getDocs(q);
 
       if (!querySnapshot.empty) {
-        const userDoc = querySnapshot.docs[0].data();
-        
-        // ✅ CRITICAL UPDATE: We now save the 'role' too!
-        localStorage.setItem('user_info', JSON.stringify({
-          name: userDoc.fullName,
-          id: userDoc.username,
-          role: userDoc.role // <--- This allows Admin powers
+        // 2. User found! Extract their data
+        const userData = querySnapshot.docs[0].data();
+
+        // 3. Save to local storage
+        localStorage.setItem('user_info', JSON.stringify({ 
+          name: userData.fullName || formattedUsername.toUpperCase(), 
+          role: userData.role || 'student', 
+          username: userData.username || formattedUsername
         }));
 
-        onLogin(userDoc.role); 
+        // 4. Secure Routing
+        const userRole = (userData.role || "").toLowerCase();
+        if (userRole === 'admin' || formattedUsername === 'admin') {
+          onLogin('admin'); 
+        } else {
+          onLogin('student'); 
+        }
       } else {
-        setError('Invalid ID or Password. Please try again.');
+        setError("Invalid username or password.");
       }
 
     } catch (err) {
-      console.error("Login Error:", err);
-      setError("Network error. Check your connection.");
+      console.error("Auth Error:", err);
+      setError("Failed to connect to the database.");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      {/* LEFT SIDE: Visuals */}
-      <div className="hidden md:flex w-1/2 bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 relative items-center justify-center overflow-hidden">
-        <div className="absolute top-20 left-20 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-        <div className="absolute top-40 right-20 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-40 w-72 h-72 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
-
-        <div className="relative z-10 text-center p-10">
-          <h1 className="text-6xl font-bold text-white mb-4 tracking-tight">CampusCanvas</h1>
-          <p className="text-xl text-blue-200">Institutional Project Repository</p>
-          <div className="mt-8 border-t border-white/20 w-24 mx-auto"></div>
-          <p className="mt-8 text-sm text-blue-300">Secure Access Portal • University of Mangbly</p>
-        </div>
-      </div>
-
-      {/* RIGHT SIDE: Login Form */}
-      <div className="w-full md:w-1/2 flex items-center justify-center bg-gray-50 relative">
-        <div className="w-full max-w-md p-8 relative z-10">
-          <div className="bg-white/80 md:bg-white backdrop-blur-xl rounded-2xl shadow-2xl p-10 border border-white/20">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-800">Welcome Back</h2>
-              <p className="text-gray-500 mt-2">Please enter your credentials</p>
-            </div>
-
-            {error && (
-              <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-6 text-sm rounded">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number / ID</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition outline-none"
-                  placeholder="e.g. 23bsccs01"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition outline-none"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-lg shadow-lg transform transition hover:scale-[1.02] duration-200 disabled:opacity-50"
-              >
-                {loading ? "Verifying..." : "Access Portal →"}
-              </button>
-            </form>
-
-            <p className="mt-8 text-center text-xs text-gray-400">
-              Authorized Personnel Only. <br/>Contact Admin for access issues.
-            </p>
+    <div className="flex min-h-screen bg-[#0a0a0a] font-sans selection:bg-indigo-500/30">
+      
+      {/* ⬅️ LEFT SIDE: Dark Enterprise Branding */}
+      <div className="hidden md:flex flex-col justify-center items-center w-1/2 relative overflow-hidden border-r border-white/10 bg-[#050505]">
+        
+        {/* Deep Glow Effects */}
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/20 blur-[120px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/20 blur-[120px] rounded-full pointer-events-none"></div>
+        
+        {/* Brand Content */}
+        <div className="relative z-10 text-center flex flex-col items-center p-12">
+          <div className="w-24 h-24 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-[2rem] flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.3)] mb-8 transform -rotate-3 border border-white/20">
+            <LayoutGrid className="w-12 h-12 text-white transform rotate-3" />
+          </div>
+          
+          <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight mb-6">
+            CampusCanvas
+          </h1>
+          
+          <p className="text-lg text-indigo-200/70 font-medium max-w-md mb-10 leading-relaxed">
+            The secure, centralized repository for student innovation and academic project portfolios.
+          </p>
+          
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-5 py-2.5 rounded-full text-xs text-gray-300 font-semibold backdrop-blur-md">
+            <Sparkles className="w-4 h-4 text-indigo-400" />
+            NIMIT Enterprise Edition
           </div>
         </div>
       </div>
+
+      {/* ➡️ RIGHT SIDE: Dark Form */}
+      <div className="flex flex-col justify-center items-center w-full md:w-1/2 p-6 relative">
+        
+        {/* Mobile-only logo (hidden on desktop) */}
+        <div className="md:hidden flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+            <LayoutGrid className="w-5 h-5 text-white" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-white">CampusCanvas</h1>
+        </div>
+
+        <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-10 rounded-[2rem] shadow-[0_0_50px_rgba(0,0,0,0.3)]">
+          
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
+            <p className="text-gray-400 text-sm">Sign in with your roll number</p>
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mb-6 text-sm font-medium flex items-center gap-2 animate-fade-in-up">
+              <AlertCircle className="w-5 h-5 shrink-0" /> {error}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-gray-300 mb-2">Username / Roll No.</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <User className="w-5 h-5 text-gray-500" />
+                </div>
+                <input 
+                  type="text" 
+                  value={username} 
+                  onChange={(e) => setUsername(e.target.value)} 
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 lowercase"
+                  placeholder="23bsccs01"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-300 mb-2">Password</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Lock className="w-5 h-5 text-gray-500" />
+                </div>
+                <input 
+                  type="password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className={`w-full mt-4 py-4 rounded-xl font-bold text-lg flex justify-center items-center gap-2 transition-all shadow-lg ${isLoading ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 hover:shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:-translate-y-0.5'}`}
+            >
+              {isLoading ? (
+                <span className="animate-pulse">Authenticating...</span>
+              ) : (
+                <>Secure Login <ArrowRight className="w-5 h-5" /></>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8 flex items-center justify-center gap-2 text-xs text-gray-500 font-medium">
+            <ShieldCheck className="w-4 h-4 text-indigo-400" /> 
+            Secured by Firebase
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

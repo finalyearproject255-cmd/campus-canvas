@@ -1,149 +1,176 @@
 import React, { useState } from 'react';
 import { db } from '../firebase'; 
-import { collection, addDoc } from 'firebase/firestore';
-import toast from 'react-hot-toast';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { X, Camera, Send, Loader2, LayoutGrid, Type, AlignLeft, Link as LinkIcon } from 'lucide-react';
 
-function AddProject({ onBack }) {
-  const [step, setStep] = useState(1);
+function AddProject({ user, onBack }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [galleryBase64, setGalleryBase64] = useState([]); 
-
-  const user = JSON.parse(localStorage.getItem('user_info')) || { name: 'Student', id: 'Anonymous' };
-
+  const [imageName, setImageName] = useState("No file chosen");
+  const [base64Image, setBase64Image] = useState(""); 
+  
   const [formData, setFormData] = useState({
     title: '',
-    category: 'Web App',
     description: '',
-    link: '',
-    author: `${user.name} (${user.id})`, 
-    views: 0,
-    color: 'from-blue-500 to-indigo-500',
-    icon: '🚀',
-    status: 'Pending'
+    category: 'Web App',
+    liveDemoUrl: ''
   });
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const categories = ['Web App', 'Mobile App', 'Game', 'AI / ML', 'IoT / Hardware'];
 
-  const handleImageChange = async (e) => {
-    const files = Array.from(e.target.files);
-    
-    if (files.length > 4) {
-      toast.error("Max 4 images allowed!");
-      return;
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 800000) { 
+        alert("Image is too large! Please choose an image under 800KB.");
+        return;
+      }
+      
+      setImageName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBase64Image(reader.result); 
+      };
+      reader.readAsDataURL(file);
     }
-
-    const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-    if (totalSize > 950 * 1024) {
-      toast.error(`Files too big (${(totalSize/1024/1024).toFixed(2)}MB). Limit 1MB.`);
-      return;
-    }
-
-    const promises = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(file);
-      });
-    });
-
-    const base64Results = await Promise.all(promises);
-    setGalleryBase64(base64Results);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (galleryBase64.length === 0) {
-      toast.error("Please select at least one image.");
-      return;
-    }
-
     setIsSubmitting(true);
-    const loadingToast = toast.loading("Uploading project...");
-
+    
     try {
       await addDoc(collection(db, "projects"), {
-        ...formData,
-        imageUrl: galleryBase64[0], 
-        gallery: galleryBase64 
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        imageUrl: base64Image, 
+        liveDemoUrl: formData.liveDemoUrl,
+        authorName: user?.name || 'Student',
+        authorUsername: user?.username || 'unknown',
+        status: 'Pending', 
+        views: 0,
+        createdAt: serverTimestamp()
       });
       
-      toast.dismiss(loadingToast);
-      toast.success("Submitted for approval! 🚀");
-      onBack();
+      alert("Project submitted successfully! Pending Admin approval.");
+      onBack(); 
     } catch (error) {
-      toast.dismiss(loadingToast);
-      toast.error("Upload failed. Try smaller images.");
+      console.error("Upload error: ", error);
+      alert("Failed to submit. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 text-white shadow-2xl relative">
-        <button onClick={onBack} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl">&times;</button>
+    // 🎨 Matched the background to your StudentHome.js UI
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-6 font-sans selection:bg-indigo-500/30 relative overflow-hidden">
+      
+      {/* Subtle ambient glow to match the premium feel */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none"></div>
 
-        {/* Steps */}
+      {/* 📦 The Glass Box (Matches your Bento grid cards) */}
+      <div className="w-full max-w-2xl bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2rem] p-8 sm:p-10 shadow-2xl relative z-10 animate-fade-in-up">
+        
+        <button 
+          onClick={onBack}
+          className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-all border border-white/10"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <div className="mb-8">
-          <div className="flex justify-between text-sm mb-2 text-blue-200">
-            <span>Step 1: Info</span><span>Step 2: Gallery</span><span>Step 3: Submit</span>
-          </div>
-          <div className="h-2 bg-black/20 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }}></div>
-          </div>
+          <h2 className="text-3xl font-extrabold text-white mb-2">Submit Project</h2>
+          <p className="text-gray-400 text-sm">Add your innovation to the CampusCanvas repository.</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {step === 1 && (
-            <div className="space-y-6 animate-fadeIn">
-              <h2 className="text-3xl font-bold">Project Info</h2>
-              <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-4" placeholder="Project Title" required />
-              <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 [&>option]:text-black">
-                <option>Web App</option><option>Mobile App</option><option>Game</option><option>AI / ML</option><option>IoT / Hardware</option>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* 📸 The Dashed Upload Box */}
+          <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 bg-black/20 rounded-[1.5rem] p-8 flex flex-col items-center justify-center cursor-pointer transition-all group overflow-hidden relative">
+            
+            {base64Image && (
+              <img src={base64Image} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-screen" />
+            )}
+
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="w-14 h-14 bg-white/5 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform border border-white/10">
+                <Camera className="w-6 h-6 text-gray-300" />
+              </div>
+              <span className="text-white font-bold mb-1 drop-shadow-md">Click to Upload Cover</span>
+              <span className="text-gray-400 text-xs bg-black/60 px-3 py-1.5 rounded-lg mt-2 border border-white/5">
+                {imageName}
+              </span>
+            </div>
+            
+            <input 
+              type="file" 
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden" 
+            />
+          </label>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Title */}
+            <div className="relative">
+              <Type className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input 
+                type="text" required placeholder="Project Title"
+                value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})}
+                className="w-full bg-black/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 outline-none focus:border-indigo-500/50 text-white placeholder-gray-500 transition-all text-sm"
+              />
+            </div>
+            
+            {/* Category */}
+            <div className="relative">
+              <LayoutGrid className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <select 
+                value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}
+                className="w-full bg-black/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 outline-none focus:border-indigo-500/50 text-white appearance-none cursor-pointer transition-all text-sm"
+              >
+                {categories.map(cat => <option key={cat} value={cat} className="bg-[#0a0a0a] text-white">{cat}</option>)}
               </select>
-              <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="w-full bg-white/5 border border-white/10 rounded-xl p-4" placeholder="Description..." required />
-              <button type="button" onClick={() => setStep(2)} className="w-full bg-blue-600 py-4 rounded-xl font-bold hover:bg-blue-500">Next ➜</button>
             </div>
-          )}
+          </div>
 
-          {step === 2 && (
-            <div className="space-y-6 animate-fadeIn">
-              <h2 className="text-3xl font-bold">Gallery</h2>
-              <div className="relative border-2 border-dashed border-white/20 rounded-2xl p-8 text-center hover:bg-white/5">
-                <input type="file" accept="image/*" multiple onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                {galleryBase64.length > 0 ? (
-                   <div className="grid grid-cols-2 gap-2">
-                     {galleryBase64.map((img, idx) => <img key={idx} src={img} alt="prev" className="h-32 w-full object-cover rounded-lg" />)}
-                   </div>
-                ) : (
-                  <><span className="text-4xl block mb-2">📸</span><p>Click to Upload (Max 4)</p></>
-                )}
-              </div>
-              <input name="link" value={formData.link} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-4" placeholder="Project Link (URL)" required />
-              <div className="flex gap-4">
-                <button type="button" onClick={() => setStep(1)} className="w-1/3 bg-white/10 py-4 rounded-xl">Back</button>
-                <button type="button" onClick={() => setStep(3)} className="w-2/3 bg-blue-600 py-4 rounded-xl font-bold">Review ➜</button>
-              </div>
-            </div>
-          )}
+          {/* URL */}
+          <div className="relative">
+            <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <input 
+              type="url" placeholder="Project Link (URL) e.g. GitHub or Live Demo"
+              value={formData.liveDemoUrl} onChange={(e) => setFormData({...formData, liveDemoUrl: e.target.value})}
+              className="w-full bg-black/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 outline-none focus:border-indigo-500/50 text-white placeholder-gray-500 transition-all text-sm"
+            />
+          </div>
 
-          {step === 3 && (
-            <div className="space-y-6 animate-fadeIn text-center">
-              <h2 className="text-3xl font-bold">Ready?</h2>
-              <div className="bg-white/10 p-6 rounded-2xl text-left border border-white/20 flex gap-4 items-center">
-                 <div className="w-16 h-16 bg-black/20 rounded-lg flex items-center justify-center overflow-hidden">
-                    {galleryBase64.length > 0 ? <img src={galleryBase64[0]} alt="mini" className="w-full h-full object-cover" /> : "🚀"}
-                 </div>
-                 <div><h3 className="text-xl font-bold">{formData.title}</h3><p className="text-sm text-white/50">{galleryBase64.length} images</p></div>
-              </div>
-              <div className="flex gap-4">
-                <button type="button" onClick={() => setStep(2)} className="w-1/3 bg-white/10 py-4 rounded-xl">Edit</button>
-                <button type="submit" disabled={isSubmitting} className="w-2/3 bg-green-500 py-4 rounded-xl font-bold hover:bg-green-400">
-                  {isSubmitting ? "Uploading..." : "🚀 Launch"}
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Description */}
+          <div className="relative">
+            <AlignLeft className="absolute left-4 top-4 w-4 h-4 text-gray-500" />
+            <textarea 
+              required rows="3" placeholder="Brief description of your project..."
+              value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="w-full bg-black/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 outline-none focus:border-indigo-500/50 text-white placeholder-gray-500 resize-none transition-all text-sm"
+            ></textarea>
+          </div>
+
+          <div className="flex gap-4 pt-2">
+            <button 
+              type="button" onClick={onBack}
+              className="w-1/3 py-3.5 rounded-2xl font-bold text-gray-400 bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-sm"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" disabled={isSubmitting}
+              className={`w-2/3 py-3.5 rounded-2xl font-bold text-white flex justify-center items-center gap-2 transition-all shadow-lg text-sm ${
+                isSubmitting ? 'bg-indigo-500/30 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-indigo-500/20'
+              }`}
+            >
+              {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <>Submit Project <Send className="w-4 h-4" /></>}
+            </button>
+          </div>
+
         </form>
       </div>
     </div>

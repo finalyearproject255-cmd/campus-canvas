@@ -1,81 +1,96 @@
 import React, { useState, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast'; // Notification System
-
-// Import Pages
 import Login from './pages/Login';
 import StudentHome from './pages/StudentHome';
-import AdminPanel from './pages/AdminPanel';
-import AddProject from './pages/AddProject';
+import AdminDashboard from './pages/AdminDashboard';
 import ProjectDetails from './pages/ProjectDetails';
-import ChatBot from './components/ChatBot'; // The AI Bot
+import AddProject from './pages/AddProject'; 
+import ChatBot from './components/ChatBot'; 
 
 function App() {
-  // 1. INITIALIZE STATE FROM LOCAL STORAGE
-  const [userRole, setUserRole] = useState(localStorage.getItem('appRole') || 'login');
+  const [user, setUser] = useState(null);
+  const [currentPage, setCurrentPage] = useState('login'); 
   const [selectedProject, setSelectedProject] = useState(null);
+  const [isChatOpen, setIsChatOpen] = useState(false); 
 
-  // 2. KEEP STATE IN SYNC
+  // --- 💾 PERSISTENCE LOGIC ---
   useEffect(() => {
-    localStorage.setItem('appRole', userRole);
-  }, [userRole]);
+    const savedUser = localStorage.getItem('user_info');
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      setCurrentPage(parsedUser.role === 'admin' ? 'admin' : 'home');
+    }
+  }, []);
 
-  // 3. NAVIGATION HANDLER
-  const handleNavigate = (page) => {
-    setUserRole(page);
+  const handleLogin = (role) => {
+    const savedUser = JSON.parse(localStorage.getItem('user_info'));
+    setUser(savedUser);
+    setCurrentPage(role === 'admin' ? 'admin' : 'home');
   };
 
-  // 4. LOGOUT HANDLER
   const handleLogout = () => {
-    setUserRole('login');
-    setSelectedProject(null);
-    localStorage.removeItem('appRole');
-    localStorage.removeItem('user_info'); // Clear user data too
+    localStorage.removeItem('user_info');
+    setUser(null);
+    setCurrentPage('login');
   };
 
-  const handleViewProject = (project) => {
-    setSelectedProject(project);
-    setUserRole('view-project');
-  };
-
+  // --- 🚦 TRAFFIC CONTROLLER (ROUTING) ---
   return (
-    <div className="App font-sans">
-      <Toaster position="top-center" reverseOrder={false} />
-
-      {/* LOGIN */}
-      {userRole === 'login' && (
-        <Login onLogin={(role) => setUserRole(role)} />
-      )}
+    <div className="bg-[#0a0a0a] min-h-screen font-sans selection:bg-indigo-500/30">
       
-      {/* STUDENT HOME */}
-      {userRole === 'student' && (
-        <StudentHome 
-          onNavigate={handleNavigate} 
-          onViewProject={handleViewProject}
+      {/* 1. LOGIN PAGE */}
+      {currentPage === 'login' && (
+        <Login onLogin={handleLogin} />
+      )}
+
+      {/* 2. STUDENT HOME */}
+      {currentPage === 'home' && user?.role !== 'admin' && (
+        <StudentHome
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={setCurrentPage} 
+          /* 🚨 FIXED: Changed to onViewProject to match StudentHome.js */
+          onViewProject={(project) => {
+            setSelectedProject(project);
+            setCurrentPage('details');
+          }}
+        />
+      )}
+
+      {/* 3. ADMIN DASHBOARD */}
+      {currentPage === 'admin' && user?.role === 'admin' && (
+        <AdminDashboard 
           onLogout={handleLogout} 
+          onNavigate={setCurrentPage} 
+        />
+      )}
+
+      {/* 4. PROJECT DETAILS */}
+      {currentPage === 'details' && selectedProject && (
+        <ProjectDetails
+          project={selectedProject}
+          onBack={() => setCurrentPage('home')}
+        />
+      )}
+
+      {/* 5. ADD PROJECT PAGE */}
+      {/* 🚨 FIXED: Changed from 'addProject' to 'add-project' to match your + button */}
+      {currentPage === 'add-project' && (
+        <AddProject
+          user={user}
+          onBack={() => setCurrentPage('home')}
+        />
+      )}
+
+      {/* 🤖 6. AI BOT */}
+      {currentPage !== 'login' && (
+        <ChatBot 
+          isOpen={isChatOpen} 
+          onOpen={() => setIsChatOpen(true)} 
+          onClose={() => setIsChatOpen(false)} 
         />
       )}
       
-      {/* ADD PROJECT */}
-      {userRole === 'add-project' && (
-        <AddProject onBack={() => setUserRole('student')} />
-      )}
-
-      {/* PROJECT DETAILS */}
-      {userRole === 'view-project' && selectedProject && (
-        <ProjectDetails 
-          project={selectedProject} 
-          onBack={() => setUserRole('student')} 
-        />
-      )}
-      
-      {/* ADMIN */}
-      {userRole === 'admin' && (
-        <AdminPanel onLogout={handleLogout} /> 
-      )}
-
-      {/* AI CHATBOT (Visible everywhere except login) */}
-      {userRole !== 'login' && <ChatBot />}
-
     </div>
   );
 }

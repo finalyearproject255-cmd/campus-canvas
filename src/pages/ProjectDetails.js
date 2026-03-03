@@ -1,173 +1,265 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import toast from 'react-hot-toast'; // Toasts
-import Footer from '../components/Footer';
+import { doc, updateDoc, increment, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { ArrowLeft, ExternalLink, Calendar, User, LayoutGrid, Image as ImageIcon, Trash2, ImagePlus, Loader2 } from 'lucide-react';
 
 function ProjectDetails({ project, onBack }) {
-  const [likes, setLikes] = useState(project.views || 0);
-  const [isLiked, setIsLiked] = useState(false);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [liveAuthorName, setLiveAuthorName] = useState("");
+  const [currentImage, setCurrentImage] = useState(project?.imageUrl);
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  // 🚨 State to control the In-App Player
+  const [isAppRunning, setIsAppRunning] = useState(false);
+  
+  const currentUser = JSON.parse(localStorage.getItem('user_info'));
+  
+  // Smart Ownership Check
+  const isOwner = currentUser && (
+    currentUser.username === project?.authorUsername || 
+    currentUser.name === project?.authorName ||
+    project?.author === `${currentUser.name}(${currentUser.username})` ||
+    project?.author === `${currentUser.name} (${currentUser.username})` ||
+    project?.author === currentUser.name ||
+    (project?.author && project?.author.includes(currentUser.username)) ||
+    liveAuthorName === currentUser.name
+  );
 
-  const currentUser = JSON.parse(localStorage.getItem('user_info')) || {};
-  const isOwner = (project.author && project.author.includes(currentUser.id)) || currentUser.role === 'admin';
-
-  // GALLERY LOGIC
-  let slides = [];
-  if (project.gallery && project.gallery.length > 0) {
-    slides = project.gallery.map(img => ({ type: 'image', content: img }));
-  } else if (project.imageUrl) {
-    slides = [{ type: 'image', content: project.imageUrl }];
-  } else {
-    slides.push({ type: 'icon', content: project.icon || '📦', color: project.color });
-  }
-
-  const nextImage = () => setActiveImageIndex((prev) => (prev + 1) % slides.length);
-  const prevImage = () => setActiveImageIndex((prev) => (prev - 1 + slides.length) % slides.length);
-
-  // DELETE
-  const handleDelete = async () => {
-    if (window.confirm("Are you sure? This cannot be undone.")) {
-      setIsDeleting(true);
-      const loadingToast = toast.loading("Deleting...");
-      try {
-        await deleteDoc(doc(db, "projects", project.id));
-        toast.dismiss(loadingToast);
-        toast.success("Project deleted.");
-        onBack();
-      } catch (error) {
-        toast.dismiss(loadingToast);
-        toast.error("Delete failed.");
-        setIsDeleting(false);
-      }
-    }
-  };
-
-  // UPDATE IMAGES
   const fileInputRef = useRef(null);
 
-  const handleUpdateImages = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  useEffect(() => {
+    if (project && project.id) {
+      // 1. Increment Views
+      const incrementView = async () => {
+        try {
+          await updateDoc(doc(db, 'projects', project.id), { views: increment(1) });
+        } catch (err) {
+          console.error("Failed to update views", err);
+        }
+      };
+      incrementView();
 
-    const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-    if (totalSize > 950 * 1024) {
-      toast.error("Files too large! Limit is 1MB.");
-      return;
+      // 2. The Smart Live Fetch
+      const fetchLiveAuthor = async () => {
+        let searchUsername = project.authorUsername;
+        
+        if (!searchUsername || searchUsername === 'unknown') {
+          if (project.author) {
+            const match = project.author.match(/\(([^)]+)\)/);
+            if (match) searchUsername = match[1].trim();
+          }
+        }
+
+        try {
+          if (searchUsername && searchUsername !== 'unknown') {
+            const q = query(collection(db, "users"), where("username", "==", searchUsername));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              setLiveAuthorName(snapshot.docs[0].data().name);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch live user", error);
+        }
+      };
+      fetchLiveAuthor();
     }
+  }, [project]);
 
-    if (!window.confirm("Replace all current images?")) return;
+  if (!project) return null;
 
-    setIsUpdating(true);
-    const loadingToast = toast.loading("Updating images...");
-    
-    const promises = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(file);
-      });
-    });
+  // --- ACTIONS ---
+  const handleDelete = async () => {
+    if (window.confirm("Are you sure you want to permanently delete this project? This cannot be undone.")) {
+      try {
+        await deleteDoc(doc(db, "projects", project.id));
+        alert("Project deleted successfully.");
+        onBack(); 
+      } catch (error) {
+        console.error("Error deleting:", error);
+        alert("Failed to delete project.");
+      }
+    }
+  }
 
-    try {
-      const newGallery = await Promise.all(promises);
-      const projectRef = doc(db, "projects", project.id);
-      await updateDoc(projectRef, {
-        gallery: newGallery,
-        imageUrl: newGallery[0]
-      });
-
-      toast.dismiss(loadingToast);
-      toast.success("Images updated!");
-      window.location.reload(); 
-    } catch (error) {
-      toast.dismiss(loadingToast);
-      toast.error("Update failed.");
-    } finally {
-      setIsUpdating(false);
+  const handleImageUpdate = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 800000) {
+        alert("Image too large! Please select an image under 800KB.");
+        return;
+      }
+      setIsUpdating(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64String = reader.result;
+          await updateDoc(doc(db, "projects", project.id), { imageUrl: base64String });
+          setCurrentImage(base64String); 
+          alert("Cover image updated successfully!");
+        } catch (error) {
+          console.error("Error updating image:", error);
+          alert("Failed to update image.");
+        } finally {
+          setIsUpdating(false);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
+  const liveLink = project.liveDemoUrl || project.link;
+  const authorDisplay = liveAuthorName || (isOwner ? currentUser?.name : null) || project.authorName || project.author || 'Unknown Student';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 text-white flex flex-col">
-      <div className="p-6 flex-grow">
-        
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-8 max-w-6xl mx-auto">
-          <button onClick={onBack} className="flex items-center gap-2 text-blue-200 hover:text-white transition font-bold">
-            ← Back to Browse
+    <div className="min-h-screen bg-[#0a0a0a] text-gray-100 font-sans pb-12 selection:bg-indigo-500/30 relative">
+      
+      {/* Top Navbar */}
+      <div className="bg-black/50 backdrop-blur-xl border-b border-white/10 sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-white/10 transition-colors text-gray-400 hover:text-white font-semibold text-sm border border-transparent hover:border-white/10">
+            <ArrowLeft className="w-5 h-5" /> Back to Repository
           </button>
 
           {isOwner && (
-            <div className="flex gap-3">
-               <input type="file" multiple accept="image/*" ref={fileInputRef} className="hidden" onChange={handleUpdateImages} />
-               <button onClick={() => fileInputRef.current.click()} disabled={isUpdating} className="bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition">
-                 {isUpdating ? "..." : "🖼️ Update Images"}
-               </button>
-               <button onClick={handleDelete} disabled={isDeleting} className="bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition">
-                 {isDeleting ? "..." : "🗑️ Delete"}
-               </button>
+            <div className="flex items-center gap-3">
+              <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpdate} />
+              
+              <button onClick={() => fileInputRef.current?.click()} disabled={isUpdating} className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 rounded-full font-bold text-sm transition-all border border-indigo-500/20">
+                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />} Update Cover
+              </button>
+              
+              <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-full font-bold text-sm transition-all border border-red-500/20">
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
             </div>
           )}
         </div>
+      </div>
 
-        {/* CONTENT */}
-        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="max-w-6xl mx-auto px-6 mt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* CAROUSEL */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="aspect-video rounded-3xl bg-gray-800 shadow-2xl relative overflow-hidden group border border-white/10 flex items-center justify-center">
-               {slides[activeImageIndex].type === 'image' ? (
-                 <img src={slides[activeImageIndex].content} alt="Project Slide" className="w-full h-full object-contain bg-black/50" />
-               ) : (
-                 <div className={`w-full h-full bg-gradient-to-br ${slides[activeImageIndex].color || 'from-gray-700 to-gray-900'} flex items-center justify-center`}>
-                    <div className="text-9xl transform scale-110">{slides[activeImageIndex].content}</div>
-                 </div>
-               )}
-               {slides.length > 1 && (
-                 <>
-                   <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center">❮</button>
-                   <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center">❯</button>
-                 </>
-               )}
+            <div className="w-full h-[400px] bg-white/5 border border-white/10 rounded-[2rem] overflow-hidden relative shadow-2xl flex items-center justify-center group">
+              {currentImage ? (
+                <img src={currentImage} alt={project.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="flex flex-col items-center text-gray-600 gap-3">
+                  <ImageIcon className="w-16 h-16" />
+                  <span>No cover image</span>
+                </div>
+              )}
             </div>
-            {slides.length > 1 && (
-              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-                {slides.map((item, idx) => (
-                  <div key={idx} onClick={() => setActiveImageIndex(idx)} className={`min-w-[5rem] h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition ${idx === activeImageIndex ? 'border-blue-400 opacity-100' : 'border-transparent opacity-50'}`}>
-                    {item.type === 'image' ? <img src={item.content} alt="thumb" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gray-700"></div>}
-                  </div>
-                ))}
-              </div>
-            )}
+            
+            <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 backdrop-blur-md">
+              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <LayoutGrid className="w-5 h-5 text-indigo-400" /> Executive Summary
+              </h2>
+              <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{project.description}</p>
+            </div>
           </div>
 
-          {/* DETAILS */}
           <div className="space-y-6">
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-xl">
-              <span className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block">{project.category}</span>
-              <h1 className="text-4xl font-bold mb-2">{project.title}</h1>
-              <p className="text-lg text-white/60 mb-6">Created by {project.author}</p>
+            <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 backdrop-blur-md relative shadow-xl">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 blur-[50px] rounded-full"></div>
+              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full text-[10px] font-bold uppercase mb-4 inline-block">{project.category || 'App'}</span>
+              <h1 className="text-3xl font-extrabold text-white mb-6 leading-tight">{project.title}</h1>
               
-              <div className="flex gap-4 mb-8">
-                <button className="flex-1 bg-white text-indigo-900 font-bold py-4 rounded-xl hover:bg-blue-50 transition" onClick={() => project.link ? window.open(project.link, "_blank") : toast.error("No link provided.")}>
-                  Launch App 🚀
-                </button>
-                <button onClick={() => { setIsLiked(!isLiked); setLikes(isLiked ? likes - 1 : likes + 1); }} className={`px-6 rounded-xl font-bold border border-white/20 transition ${isLiked ? 'bg-pink-500 border-pink-500' : 'bg-white/5'}`}>
-                  {isLiked ? '❤️' : '🤍'} {likes}
-                </button>
+              {/* 🚨 THE GLITCH-FREE ROLLING BUTTON */}
+              {liveLink ? (
+                <div className="relative group w-full h-14 sm:h-16 mb-8 z-30 rounded-xl overflow-hidden shadow-lg shadow-white/10 border border-white/10 cursor-pointer">
+                  
+                  {/* FRONT FACE (Default View) */}
+                  <div className="absolute inset-0 bg-white text-black font-bold text-lg flex justify-center items-center gap-2 transition-transform duration-300 group-hover:-translate-y-full">
+                    Launch App <ExternalLink className="w-5 h-5" />
+                  </div>
+
+                  {/* BOTTOM FACE (The Two Options that slide up on hover) */}
+                  <div className="absolute inset-0 flex translate-y-full transition-transform duration-300 group-hover:translate-y-0">
+                    
+                    <button 
+                      onClick={() => setIsAppRunning(true)}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm sm:text-base flex justify-center items-center gap-2 transition-colors border-r border-indigo-700/50"
+                    >
+                      <LayoutGrid className="w-4 h-4" /> Run in Browser
+                    </button>
+                    
+                    <a 
+                      href={liveLink} target="_blank" rel="noopener noreferrer" 
+                      className="flex-1 bg-black hover:bg-gray-900 text-white font-bold text-sm sm:text-base flex justify-center items-center gap-2 transition-colors"
+                    >
+                      Secure Tab <ExternalLink className="w-4 h-4 text-gray-400" />
+                    </a>
+
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full bg-white/5 border border-white/10 py-4 rounded-xl font-bold text-sm text-gray-500 flex justify-center items-center mb-8 shadow-inner">
+                  No Live Demo Available
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
+                  <User className="w-5 h-5 text-indigo-400" />
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Developer</p>
+                    <p className="text-sm font-semibold text-white">{authorDisplay}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
+                  <Calendar className="w-5 h-5 text-purple-400" />
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Views</p>
+                    <p className="text-sm font-semibold text-white">{project.views || 0} Total</p>
+                  </div>
+                </div>
               </div>
-              <hr className="border-white/10 mb-6" />
-              <h3 className="text-xl font-bold mb-3">About this Project</h3>
-              <p className="text-blue-100 leading-relaxed whitespace-pre-wrap">{project.description}</p>
             </div>
           </div>
+          
         </div>
       </div>
-      <Footer />
+
+      {/* 🚨 THE IN-APP PLAYER MODAL */}
+      {isAppRunning && liveLink && (
+        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex flex-col animate-fade-in-up">
+          
+          <div className="flex items-center justify-between p-4 bg-[#050505] border-b border-white/10 shadow-2xl z-10">
+            <div className="flex items-center gap-3">
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </span>
+              <span className="text-white font-bold text-sm tracking-wider">LIVE ENVIRONMENT</span>
+              <span className="text-gray-500 text-xs hidden sm:block">| {liveLink}</span>
+            </div>
+            
+            <button 
+              onClick={() => setIsAppRunning(false)}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg font-bold text-xs transition-colors border border-red-500/20"
+            >
+              Close Simulator
+            </button>
+          </div>
+
+          <div className="flex-1 w-full bg-white relative">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-[#0a0a0a]">
+              <span className="text-gray-400 animate-pulse font-bold flex flex-col items-center gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                Connecting to server...
+              </span>
+            </div>
+            <iframe 
+              src={liveLink} 
+              title="Project Live Preview"
+              className="w-full h-full relative z-10 border-none bg-white"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
