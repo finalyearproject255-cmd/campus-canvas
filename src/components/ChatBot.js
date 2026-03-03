@@ -4,7 +4,7 @@ import { collegeData } from '../data/collegeData';
 import { Bot, Send, X, Sparkles } from 'lucide-react'; // 🆕 Upgraded to premium icons
 
 // 🔑 Your API Key
-const API_KEY = "AIzaSyBA3WcmWZskhy8Wxqkz6aXTkmmgLbNLe38"; 
+const API_KEY = process.env.REACT_APP_GEMINI_API_KEY; 
 
 function ChatBot({ isOpen, onClose, onOpen }) {
   const [messages, setMessages] = useState([
