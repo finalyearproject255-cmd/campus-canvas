@@ -5,6 +5,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import ProjectDetails from './pages/ProjectDetails';
 import AddProject from './pages/AddProject'; 
 import ChatBot from './components/ChatBot'; 
+import Canteen from './pages/Canteen'; // 🆕 New Page
+import CanteenAdmin from './pages/CanteenAdmin'; // 🆕 New Page
 
 function App() {
   const [user, setUser] = useState(null);
@@ -18,6 +20,7 @@ function App() {
     if (savedUser) {
       const parsedUser = JSON.parse(savedUser);
       setUser(parsedUser);
+      // Admin starts at Dashboard, Student starts at Home
       setCurrentPage(parsedUser.role === 'admin' ? 'admin' : 'home');
     }
   }, []);
@@ -34,6 +37,9 @@ function App() {
     setCurrentPage('login');
   };
 
+  // Helper to determine if current user has Admin privileges
+  const isAdmin = user?.role === 'admin';
+
   // --- 🚦 TRAFFIC CONTROLLER (ROUTING) ---
   return (
     <div className="bg-[#0a0a0a] min-h-screen font-sans selection:bg-indigo-500/30">
@@ -43,13 +49,12 @@ function App() {
         <Login onLogin={handleLogin} />
       )}
 
-      {/* 2. STUDENT HOME */}
-      {currentPage === 'home' && user?.role !== 'admin' && (
+      {/* 2. HOME PAGE (Accessible by Students AND Admins) */}
+      {currentPage === 'home' && user && (
         <StudentHome
           user={user}
           onLogout={handleLogout}
           onNavigate={setCurrentPage} 
-          /* 🚨 FIXED: Changed to onViewProject to match StudentHome.js */
           onViewProject={(project) => {
             setSelectedProject(project);
             setCurrentPage('details');
@@ -57,15 +62,29 @@ function App() {
         />
       )}
 
-      {/* 3. ADMIN DASHBOARD */}
-      {currentPage === 'admin' && user?.role === 'admin' && (
+      {/* 3. ADMIN DASHBOARD (Project Moderation/Stats) */}
+      {currentPage === 'admin' && isAdmin && (
         <AdminDashboard 
           onLogout={handleLogout} 
           onNavigate={setCurrentPage} 
         />
       )}
 
-      {/* 4. PROJECT DETAILS */}
+      {/* 4. CANTEEN (Student Order View) */}
+      {currentPage === 'canteen' && user && (
+        <Canteen 
+          onBack={() => setCurrentPage(isAdmin ? 'admin' : 'home')} 
+        />
+      )}
+
+      {/* 5. CANTEEN ADMIN (Staff View for Stock/Tokens) */}
+      {currentPage === 'canteen-admin' && isAdmin && (
+        <CanteenAdmin 
+          onBack={() => setCurrentPage('admin')} 
+        />
+      )}
+
+      {/* 6. PROJECT DETAILS */}
       {currentPage === 'details' && selectedProject && (
         <ProjectDetails
           project={selectedProject}
@@ -73,16 +92,15 @@ function App() {
         />
       )}
 
-      {/* 5. ADD PROJECT PAGE */}
-      {/* 🚨 FIXED: Changed from 'addProject' to 'add-project' to match your + button */}
-      {currentPage === 'add-project' && (
+      {/* 7. ADD PROJECT PAGE */}
+      {currentPage === 'add-project' && user && (
         <AddProject
           user={user}
           onBack={() => setCurrentPage('home')}
         />
       )}
 
-      {/* 🤖 6. AI BOT */}
+      {/* 🤖 8. AI BOT */}
       {currentPage !== 'login' && (
         <ChatBot 
           isOpen={isChatOpen} 

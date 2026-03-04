@@ -1,29 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { 
   LayoutDashboard, LogOut, CheckCircle, XCircle, Trash2, Clock, LayoutGrid,
-  ShieldAlert, Eye, X, ExternalLink, Image as ImageIcon, Users, UserPlus, Key, Mail, Shield, Menu
+  ShieldAlert, Eye, X, ExternalLink, Image as ImageIcon, Users, UserPlus, Key, Mail, Shield, Menu, Utensils, Package, RefreshCcw, Home
 } from 'lucide-react';
 
-function AdminDashboard({ onLogout }) {
-  // --- CORE STATE ---
+function AdminDashboard({ onLogout, onNavigate }) {
+  // --- CORE STATE (EXISTING) ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const [projects, setProjects] = useState([]);
   const [usersList, setUsersList] = useState([]); 
   const [userMap, setUserMap] = useState({});
   const [loading, setLoading] = useState(true);
   
-  // --- UI STATE (NEW) ---
+  // --- UI STATE (EXISTING) ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Controls mobile menu
   
-  // --- MODAL STATES ---
+  // --- MODAL STATES (EXISTING) ---
   const [reviewProject, setReviewProject] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: 'Student' });
 
-  // --- 🔄 FETCH ALL DATA ---
+  // --- 🆕 NEW STATE FOR CANTEEN ---
+  const [canteenOrders, setCanteenOrders] = useState([]);
+  const [canteenInventory, setCanteenInventory] = useState([]);
+
+  // --- 🔄 FETCH ALL DATA (EXISTING LOGIC PRESERVED) ---
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
@@ -55,11 +59,24 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
+  // --- 🆕 NEW USE EFFECT FOR CANTEEN SYNC ---
   useEffect(() => {
-    fetchDashboardData();
+    fetchDashboardData(); // Call existing fetch
+
+    // 1. Sync Canteen Orders
+    const unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
+      setCanteenOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // 2. Sync Canteen Inventory
+    const unsubInv = onSnapshot(collection(db, "canteen_items"), (snap) => {
+      setCanteenInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubOrders(); unsubInv(); };
   }, []);
 
-  // --- ⚡ PROJECT ACTIONS ---
+  // --- ⚡ PROJECT ACTIONS (EXISTING) ---
   const updateStatus = async (projectId, newStatus) => {
     try {
       await updateDoc(doc(db, "projects", projectId), { status: newStatus });
@@ -82,7 +99,18 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
-  // --- 👤 USER ACTIONS ---
+  // --- 🆕 NEW CANTEEN ACTIONS ---
+  const completeCanteenOrder = async (id) => {
+    if (window.confirm("Mark order as served?")) {
+      await deleteDoc(doc(db, "orders", id));
+    }
+  };
+
+  const updateCanteenStock = async (id, newStock) => {
+    await updateDoc(doc(db, "canteen_items", id), { stock: parseInt(newStock) || 0 });
+  };
+
+  // --- 👤 USER ACTIONS (EXISTING) ---
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
@@ -122,7 +150,7 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
-  // --- HELPER: GET USER'S PROJECTS ---
+  // --- HELPER: GET USER'S PROJECTS (EXISTING) ---
   const getUserProjects = (targetUser) => {
     return projects.filter(project => {
       let searchUsername = project.authorUsername;
@@ -143,7 +171,7 @@ function AdminDashboard({ onLogout }) {
   return (
     <div className="flex min-h-screen bg-[#0a0a0a] text-gray-100 font-sans selection:bg-indigo-500/30 overflow-hidden relative">
       
-      {/* --- MOBILE HEADER (NEW) --- */}
+      {/* --- MOBILE HEADER (EXISTING) --- */}
       <div className="md:hidden fixed top-0 w-full z-50 bg-[#050505]/90 backdrop-blur-md border-b border-white/10 p-4 flex justify-between items-center">
          <div className="flex items-center gap-2">
             <ShieldAlert className="w-6 h-6 text-indigo-500" />
@@ -157,7 +185,7 @@ function AdminDashboard({ onLogout }) {
          </button>
       </div>
 
-      {/* --- SIDEBAR (RESPONSIVE) --- */}
+      {/* --- SIDEBAR (UPDATED) --- */}
       <div className={`
           fixed inset-y-0 left-0 z-40 w-64 bg-[#050505] border-r border-white/10 flex flex-col justify-between
           transform transition-transform duration-300 ease-in-out
@@ -194,6 +222,24 @@ function AdminDashboard({ onLogout }) {
             >
               <Users className="w-5 h-5" /> Manage Users
             </button>
+
+            {/* 🆕 NEW CANTEEN BUTTON */}
+            <button 
+              onClick={() => { setActiveTab('canteen'); setIsSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all shadow-lg ${
+                activeTab === 'canteen' ? 'bg-orange-600/20 text-orange-400 border border-orange-500/30' : 'bg-transparent text-gray-400 hover:bg-white/5 border border-transparent'
+              }`}
+            >
+              <Utensils className="w-5 h-5" /> Canteen Control
+            </button>
+            
+            {/* 🆕 NEW GOD MODE BUTTON */}
+            <div className="pt-4 border-t border-white/5 mt-4">
+               <button onClick={() => onNavigate('home')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-gray-400 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all">
+                  <Home className="w-5 h-5" /> Student View
+               </button>
+            </div>
+
           </nav>
         </div>
 
@@ -221,7 +267,7 @@ function AdminDashboard({ onLogout }) {
 
         <div className="max-w-6xl mx-auto relative z-10">
           
-          {/* TAB 1: PROJECTS DASHBOARD */}
+          {/* TAB 1: PROJECTS DASHBOARD (EXISTING) */}
           {activeTab === 'dashboard' && (
             <div className="animate-fade-in-up">
               <h2 className="text-3xl font-extrabold text-white mb-8">Project Overview</h2>
@@ -321,7 +367,7 @@ function AdminDashboard({ onLogout }) {
             </div>
           )}
 
-          {/* TAB 2: USERS DIRECTORY */}
+          {/* TAB 2: USERS DIRECTORY (EXISTING) */}
           {activeTab === 'users' && (
             <div className="animate-fade-in-up">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
@@ -415,10 +461,61 @@ function AdminDashboard({ onLogout }) {
             </div>
           )}
 
+          {/* 🆕 TAB 3: CANTEEN CONTROL (NEW) */}
+          {activeTab === 'canteen' && (
+            <div className="animate-fade-in-up">
+              <h2 className="text-3xl font-extrabold text-white mb-8">Canteen Operations</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                {/* Active Orders */}
+                <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 backdrop-blur-md">
+                   <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-orange-400"><Package className="w-5 h-5" /> Live Orders</h3>
+                   <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                     {canteenOrders.length > 0 ? canteenOrders.map(order => (
+                       <div key={order.id} className="bg-black/40 p-5 rounded-2xl border border-white/5 flex justify-between items-center group">
+                          <div>
+                            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Token: {order.id.slice(-6).toUpperCase()}</p>
+                            <p className="text-lg font-bold text-white">{order.itemName}</p>
+                            <p className="text-xs text-indigo-400 font-bold">Customer: {order.customerName}</p>
+                          </div>
+                          <button onClick={() => completeCanteenOrder(order.id)} className="p-3 bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white rounded-xl transition-all shadow-lg"><CheckCircle className="w-6 h-6" /></button>
+                       </div>
+                     )) : <p className="text-gray-600 italic text-center py-8">No active orders.</p>}
+                   </div>
+                </div>
+
+                {/* Stock Management */}
+                <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 backdrop-blur-md">
+                   <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-400"><RefreshCcw className="w-5 h-5" /> Stock Management</h3>
+                   <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                     {canteenInventory.map(item => (
+                       <div key={item.id} className="bg-black/40 p-5 rounded-2xl border border-white/5 flex justify-between items-center">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{item.icon}</span>
+                            <div><p className="font-bold text-white">{item.name}</p><p className="text-xs text-gray-500">Price: ₹{item.price}</p></div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <input 
+                               type="number" 
+                               defaultValue={item.stock}
+                               onBlur={(e) => updateCanteenStock(item.id, e.target.value)}
+                               className="w-16 bg-white/5 border border-white/10 rounded-lg p-2 text-center text-sm focus:border-indigo-500 outline-none font-bold text-white"
+                             />
+                             <span className="text-[10px] text-gray-500 font-bold uppercase">Qty</span>
+                          </div>
+                       </div>
+                     ))}
+                   </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
-      {/* MODALS SECTION - (Same as before, just kept for completeness) */}
+      {/* --- MODALS SECTION (EXISTING LOGIC PRESERVED) --- */}
 
       {/* 1. PROJECT REVIEW MODAL */}
       {reviewProject && (
@@ -481,7 +578,7 @@ function AdminDashboard({ onLogout }) {
         </div>
       )}
 
-      {/* 2. ADD NEW USER MODAL (Identical logic) */}
+      {/* 2. ADD NEW USER MODAL (EXISTING) */}
       {showAddUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 font-sans">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowAddUser(false)}></div>
@@ -542,7 +639,7 @@ function AdminDashboard({ onLogout }) {
         </div>
       )}
 
-      {/* 3. STUDENT DOSSIER MODAL (Identical logic) */}
+      {/* 3. STUDENT DOSSIER MODAL (EXISTING) */}
       {selectedUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 font-sans">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedUser(null)}></div>
