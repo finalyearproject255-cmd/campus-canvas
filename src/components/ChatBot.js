@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { collegeData } from '../data/collegeData'; 
 import { Bot, Send, X, Sparkles, Loader2 } from 'lucide-react';
 
-// 🔑 Your API Key
+// 🔑 SETUP: Uses the Vercel/Local Environment Variable
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY; 
 
 function ChatBot({ isOpen, onClose, onOpen }) {
@@ -24,10 +24,13 @@ function ChatBot({ isOpen, onClose, onOpen }) {
   // --- AI LOGIC (UPDATED BRAIN) ---
   const generateResponse = async (userQuestion) => {
     try {
-      if (!API_KEY) return "⚠️ Error: API Key Missing in .env file.";
+      if (!API_KEY) return "⚠️ Error: API Key Missing. Please check Vercel settings.";
       
       const genAI = new GoogleGenerativeAI(API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      // 🚨 CRITICAL FIX: Switched to 'gemini-pro' to fix the 404 Error
+      // Try this exact string - it's the most compatible version for 1.5 Flash
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
       // 🧠 THE UPDATED PROMPT STRATEGY
       const systemContext = `
